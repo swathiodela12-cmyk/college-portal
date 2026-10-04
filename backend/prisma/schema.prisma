@@ -1,0 +1,514 @@
+// Vaagdegi Colleges - College Management & Student Portfolio Platform
+// Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  FACULTY
+  STUDENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  HOLIDAY
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EventType {
+  WORKSHOP
+  SEMINAR
+  HACKATHON
+  CULTURAL
+  SPORTS
+  CONFERENCE
+  GUEST_LECTURE
+  OTHER
+}
+
+enum PlacementStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  OFFERED
+  REJECTED
+  JOINED
+}
+
+enum DocumentType {
+  ID_PROOF
+  MARKSHEET
+  CERTIFICATE
+  RESUME
+  PHOTO
+  OFFER_LETTER
+  OTHER
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  ANNOUNCEMENT
+}
+
+enum AnnouncementAudience {
+  ALL
+  STUDENTS
+  FACULTY
+  ADMINS
+  SPECIFIC_DEPARTMENT
+  SPECIFIC_YEAR
+}
+
+// ---------------------------------------------------------------------------
+// CORE / AUTH
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(STUDENT)
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  refreshTokens  RefreshToken[]
+  studentProfile StudentProfile?
+  facultyProfile FacultyProfile?
+
+  markedAttendance   Attendance[]        @relation("MarkedByUser")
+  announcementsMade  Announcement[]      @relation("AnnouncementAuthor")
+  notifications      Notification[]      @relation("NotificationRecipient")
+  documentsUploaded  Document[]          @relation("DocumentUploader")
+  contactsHandled    Contact[]           @relation("ContactHandler")
+  auditLogs          AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  students StudentProfile[]
+  faculty  FacultyProfile[]
+  programs Program[]
+
+  @@map("departments")
+}
+
+model FacultyProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeCode String   @unique
+  firstName    String
+  lastName     String
+  designation  String?
+  phone        String?
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  joiningDate  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([departmentId])
+  @@map("faculty_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// STUDENT
+// ---------------------------------------------------------------------------
+
+model StudentProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rollNumber      String   @unique
+  admissionNumber String   @unique
+  firstName       String
+  lastName        String
+  gender          Gender?
+  dateOfBirth     DateTime?
+  phone           String?
+  address         String?
+  city            String?
+  state           String?
+  pincode         String?
+  bloodGroup      String?
+  photoUrl        String?
+
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id])
+  program         String?     // e.g., B.Tech, MBA
+  batchYear       Int?
+  currentYear     Int?        @default(1)
+  currentSemester Int?        @default(1)
+  section         String?
+
+  guardianName    String?
+  guardianPhone   String?
+  guardianEmail   String?
+
+  cgpa            Float?
+  status          String   @default("ACTIVE") // ACTIVE, GRADUATED, SUSPENDED, DROPPED
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  attendance       Attendance[]
+  academicRecords  AcademicRecord[]
+  achievements     Achievement[]
+  internships      Internship[]
+  awards           Award[]
+  certifications   Certification[]
+  participations   EventParticipation[]
+  placements       Placement[]
+  documents        Document[]
+  contacts         Contact[]
+
+  @@index([departmentId])
+  @@index([batchYear])
+  @@index([status])
+  @@map("student_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// ATTENDANCE
+// ---------------------------------------------------------------------------
+
+model Attendance {
+  id           String            @id @default(cuid())
+  studentId    String
+  student      StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date         DateTime
+  status       AttendanceStatus  @default(PRESENT)
+  subject      String?
+  remarks      String?
+  markedById   String?
+  markedBy     User?             @relation("MarkedByUser", fields: [markedById], references: [id])
+  createdAt    DateTime          @default(now())
+
+  @@unique([studentId, date, subject])
+  @@index([studentId, date])
+  @@map("attendance")
+}
+
+// ---------------------------------------------------------------------------
+// ACADEMIC RECORDS
+// ---------------------------------------------------------------------------
+
+model AcademicRecord {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  year        Int
+  semester    Int
+  subject     String
+  credits     Float
+  grade       String
+  gradePoint  Float
+  examType    String   @default("SEMESTER") // SEMESTER, INTERNAL, SUPPLEMENTARY
+  remarks     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([studentId, year, semester])
+  @@map("academic_records")
+}
+
+// ---------------------------------------------------------------------------
+// ACHIEVEMENTS / AWARDS / CERTIFICATIONS / INTERNSHIPS
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          String         @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  category    String?        // Academic, Sports, Cultural, Technical...
+  date        DateTime
+  proofUrl    String?
+  status      ApprovalStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@map("achievements")
+}
+
+model Internship {
+  id            String         @id @default(cuid())
+  studentId     String
+  student       StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  companyName   String
+  role          String
+  startDate     DateTime
+  endDate       DateTime?
+  stipend       Float?
+  location      String?
+  mode          String?        // Remote, Onsite, Hybrid
+  description   String?
+  certificateUrl String?
+  status        ApprovalStatus @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([studentId])
+  @@map("internships")
+}
+
+model Award {
+  id          String         @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title       String
+  issuedBy    String?
+  level       String?        // College, State, National, International
+  date        DateTime
+  description String?
+  proofUrl    String?
+  status      ApprovalStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([studentId])
+  @@map("awards")
+}
+
+model Certification {
+  id             String         @id @default(cuid())
+  studentId      String
+  student        StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title          String
+  issuingOrg     String
+  issueDate      DateTime
+  expiryDate     DateTime?
+  credentialId   String?
+  credentialUrl  String?
+  certificateUrl String?
+  status         ApprovalStatus @default(PENDING)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([studentId])
+  @@map("certifications")
+}
+
+// ---------------------------------------------------------------------------
+// PROGRAMS / EVENTS / PARTICIPATION
+// ---------------------------------------------------------------------------
+
+model Program {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  durationYears Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  events Event[]
+
+  @@map("programs")
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  type        EventType @default(OTHER)
+  programId   String?
+  program     Program?  @relation(fields: [programId], references: [id])
+  venue       String?
+  startDate   DateTime
+  endDate     DateTime?
+  bannerUrl   String?
+  capacity    Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  participations EventParticipation[]
+
+  @@index([type])
+  @@map("events")
+}
+
+model EventParticipation {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  role       String?  // Participant, Winner, Organizer, Volunteer
+  position   String?  // 1st, 2nd, Finalist...
+  certificateUrl String?
+  registeredAt DateTime @default(now())
+
+  @@unique([eventId, studentId])
+  @@index([studentId])
+  @@map("event_participations")
+}
+
+// ---------------------------------------------------------------------------
+// PLACEMENTS
+// ---------------------------------------------------------------------------
+
+model Placement {
+  id           String          @id @default(cuid())
+  studentId    String
+  student      StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  companyName  String
+  jobTitle     String
+  packageLPA   Float?
+  location     String?
+  driveDate    DateTime?
+  status       PlacementStatus @default(APPLIED)
+  offerLetterUrl String?
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@map("placements")
+}
+
+// ---------------------------------------------------------------------------
+// ANNOUNCEMENTS / DOCUMENTS / CONTACTS / NOTIFICATIONS
+// ---------------------------------------------------------------------------
+
+model Announcement {
+  id          String               @id @default(cuid())
+  title       String
+  body        String
+  audience    AnnouncementAudience @default(ALL)
+  departmentId String?
+  batchYear   Int?
+  pinned      Boolean              @default(false)
+  authorId    String
+  author      User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+  publishedAt DateTime             @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([audience])
+  @@map("announcements")
+}
+
+model Document {
+  id           String       @id @default(cuid())
+  studentId    String
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type         DocumentType @default(OTHER)
+  title        String
+  fileUrl      String
+  fileSize     Int?
+  mimeType     String?
+  uploadedById String?
+  uploadedBy   User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  verified     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+
+  @@index([studentId])
+  @@map("documents")
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  studentId   String?
+  student     StudentProfile? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  name        String
+  email       String
+  phone       String?
+  subject     String
+  message     String
+  resolved    Boolean  @default(false)
+  handledById String?
+  handledBy   User?    @relation("ContactHandler", fields: [handledById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("contacts")
+}
+
+model Notification {
+  id          String            @id @default(cuid())
+  recipientId String
+  recipient   User              @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  type        NotificationType  @default(INFO)
+  title       String
+  message     String
+  link        String?
+  read        Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+
+  @@index([recipientId, read])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
