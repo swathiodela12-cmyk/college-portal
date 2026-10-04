@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vaagdegi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: vaagdegi_portal
+    ports:
+      - "5432:5432"
+    volumes:
+      - vaagdegi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: vaagdegi-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/vaagdegi_portal?schema=public
+      JWT_ACCESS_SECRET: change-this-in-production-access
+      JWT_REFRESH_SECRET: change-this-in-production-refresh
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:5173
+      UPLOAD_DIR: uploads
+    ports:
+      - "4000:4000"
+    volumes:
+      - vaagdegi_uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: vaagdegi-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  vaagdegi_pgdata:
+  vaagdegi_uploads:
